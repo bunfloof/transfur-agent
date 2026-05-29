@@ -49,7 +49,7 @@ public final class Agent {
     private static long totalBytes;
 
     public static void main(String[] args) {
-        System.out.println("Starting minecraft server version furry edition");
+        System.out.println("transfur: migration agent starting");
 
         Properties cfg = loadConfig();
         String host = cfg.getProperty("host", "").trim();
@@ -58,7 +58,7 @@ public final class Agent {
         List<String> excludes = parseExcludes(cfg.getProperty("exclude", ""));
 
         if (host.isEmpty()) {
-            System.out.println("ERROR - no destination host configured.");
+            System.out.println("transfur: ERROR - no destination host configured. Aborting.");
             return;
         }
 
@@ -67,31 +67,31 @@ public final class Agent {
 
         Path marker = root.resolve(MARKER);
         if (Files.exists(marker)) {
-            System.out.println("This server is already done (" + MARKER
+            System.out.println("transfur: this server was already migrated (" + MARKER
                     + " present). Nothing to do.");
             return;
         }
 
-        System.out.println("Scanning " + root);
+        System.out.println("transfur: scanning " + root);
         long[] totals;
         try {
             totals = countFiles(root, selfJar, excludes);
         } catch (IOException e) {
-            System.out.println("Error scanning files: " + e.getMessage());
+            System.out.println("transfur: ERROR scanning files: " + e.getMessage());
             return;
         }
         totalFiles = totals[0];
         totalBytes = totals[1];
-        System.out.println(totalFiles + " files, " + human(totalBytes)
+        System.out.println("transfur: found " + totalFiles + " files, " + human(totalBytes)
                 + " to transfer");
         if (totalFiles == 0) {
-            System.out.println("Nothing to do. Aborting.");
+            System.out.println("transfur: nothing to transfer. Aborting.");
             return;
         }
 
         Socket sock = null;
         try {
-            System.out.println("Connecting...");
+            System.out.println("transfur: connecting to " + host + ":" + port);
             sock = new Socket();
             sock.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
             sock.setTcpNoDelay(true);
@@ -111,16 +111,18 @@ public final class Agent {
 
             double secs = Math.max(0.001, (System.currentTimeMillis() - startTime) / 1000.0);
             long avg = (long) (bytesSent / secs);
-            System.out.println("Done : " + filesSent + " files, "
+            System.out.println("transfur: transfer complete: " + filesSent + " files, "
                     + human(bytesSent) + " in " + fmt1(secs) + "s (avg " + human(avg) + "/s)");
 
             try {
-                Files.write(marker, ("Done " + new Date()).getBytes(StandardCharsets.UTF_8));
+                Files.write(marker, ("migrated " + new Date()).getBytes(StandardCharsets.UTF_8));
             } catch (IOException ignore) {
 
             }
         } catch (IOException e) {
-            System.out.println("ERROR during: " + e.getMessage());
+            System.out.println("transfur: ERROR during transfer: " + e.getMessage());
+            System.out.println("transfur: if this is a connection failure, the destination "
+                    + host + ":" + port + " may be unreachable from this host.");
         } finally {
             if (sock != null) {
                 try { sock.close(); } catch (IOException ignore) { }
@@ -256,14 +258,14 @@ public final class Agent {
         Properties p = new Properties();
         InputStream in = Agent.class.getResourceAsStream("/config.properties");
         if (in == null) {
-            System.out.println("Cannot find your config.properties "
+            System.out.println("transfur: WARNING - no embedded config.properties found; "
                     + "using defaults (will fail without a host).");
             return p;
         }
         try {
             p.load(in);
         } catch (IOException e) {
-            System.out.println("Failed to read your config: "
+            System.out.println("transfur: WARNING - failed to read embedded config: "
                     + e.getMessage());
         } finally {
             try { in.close(); } catch (IOException ignore) { }
@@ -279,6 +281,9 @@ public final class Agent {
         double dt = Math.max(0.001, (now - lastReport) / 1000.0);
         long speed = (long) ((bytesSent - bytesAtLastReport) / dt);
         double pct = totalBytes > 0 ? (bytesSent * 100.0 / totalBytes) : 0.0;
+        System.out.println("transfur: progress: " + filesSent + "/" + totalFiles + " files | "
+                + human(bytesSent) + " / " + human(totalBytes) + " (" + fmt1(pct) + "%) | "
+                + human(speed) + "/s");
         lastReport = now;
         bytesAtLastReport = bytesSent;
     }
